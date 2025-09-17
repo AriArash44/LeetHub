@@ -1,71 +1,34 @@
-//todo: this code passes 288/294 testcases in leetcode, must become faster
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int i, j; } Pair;
-
-typedef struct Node {
-    Pair p;
-    struct Node* next;
-} Node;
-
 typedef struct {
-    int sum;
-    Node* list;
-} Entry;
-
-typedef struct {
-    Entry* entries;
+    int** quadruplets;
     int size;
-    int cap;
-} Dict;
+    int capacity;
+} ResultList;
 
-void dictInit(Dict* d) {
-    d->entries = NULL;
-    d->size = 0;
-    d->cap = 0;
+void initResultList(ResultList* res) {
+    res->quadruplets = NULL;
+    res->size = 0;
+    res->capacity = 0;
 }
 
-Entry* dictFind(Dict* d, int sum) {
-    for (int i = 0; i < d->size; i++) {
-        if (d->entries[i].sum == sum) return &d->entries[i];
+void addQuadruplet(ResultList* res, int a, int b, int c, int d) {
+    if (res->size == res->capacity) {
+        res->capacity = res->capacity ? res->capacity * 2 : 16;
+        res->quadruplets = realloc(res->quadruplets, res->capacity * sizeof(int*));
     }
-    return NULL;
-}
-
-Entry* dictGetOrCreate(Dict* d, int sum) {
-    Entry* e = dictFind(d, sum);
-    if (e) return e;
-    if (d->size == d->cap) {
-        d->cap = d->cap ? d->cap * 2 : 16;
-        d->entries = realloc(d->entries, d->cap * sizeof(Entry));
-    }
-    d->entries[d->size].sum = sum;
-    d->entries[d->size].list = NULL;
-    return &d->entries[d->size++];
-}
-
-void dictInsert(Dict* d, int sum, Pair p) {
-    Entry* e = dictGetOrCreate(d, sum);
-    Node* n = malloc(sizeof(Node));
-    n->p = p;
-    n->next = e->list;
-    e->list = n;
-}
-
-int cmpQuad(const void* a, const void* b) {
-    const int* qa = *(const int**)a;
-    const int* qb = *(const int**)b;
-    for (int i = 0; i < 4; i++) {
-        if (qa[i] != qb[i]) return qa[i] - qb[i];
-    }
-    return 0;
+    int* quad = malloc(4 * sizeof(int));
+    quad[0] = a;
+    quad[1] = b;
+    quad[2] = c;
+    quad[3] = d;
+    res->quadruplets[res->size++] = quad;
 }
 
 int cmpInt(const void* a, const void* b) {
-    return (*(int*)a) - (*(int*)b);
+    return (*(int*)a - *(int*)b);
 }
 
 int** fourSum(int* nums, int numsSize, int target, int* returnSize, int** returnColumnSizes) {
@@ -73,56 +36,37 @@ int** fourSum(int* nums, int numsSize, int target, int* returnSize, int** return
     *returnColumnSizes = NULL;
     if (numsSize < 4) return NULL;
     qsort(nums, numsSize, sizeof(int), cmpInt);
-    Dict sumTable, needTable;
-    dictInit(&sumTable);
-    dictInit(&needTable);
-    for (int i = 0; i < numsSize; i++) {
-        for (int j = i + 1; j < numsSize; j++) {
-            int sum = nums[i] + nums[j];
-            dictInsert(&sumTable, sum, (Pair){i, j});
-            dictInsert(&needTable, target - sum, (Pair){i, j});
-        }
-    }
-    int cap = 1024, count = 0;
-    int** res = malloc(cap * sizeof(int*));
-    for (int si = 0; si < sumTable.size; si++) {
-        int sum = sumTable.entries[si].sum;
-        Node* list1 = sumTable.entries[si].list;
-        Entry* needEntry = dictFind(&needTable, sum);
-        if (!needEntry) continue;
-        Node* list2 = needEntry->list;
-        for (Node* a = list1; a; a = a->next) {
-            for (Node* b = list2; b; b = b->next) {
-                int i1 = a->p.i, j1 = a->p.j;
-                int i2 = b->p.i, j2 = b->p.j;
-                if (i1==i2 || i1==j2 || j1==i2 || j1==j2) continue;
-                if (j1 >= i2) continue;
-                int prev_i1 = -1, prev_j1 = -1;
-                int* q = malloc(4 * sizeof(int));
-                q[0] = nums[i1];
-                q[1] = nums[j1];
-                q[2] = nums[i2];
-                q[3] = nums[j2];
-                if (count == cap) {
-                    cap *= 2;
-                    res = realloc(res, cap * sizeof(int*));
+    ResultList result;
+    initResultList(&result);
+    for (int i = 0; i < numsSize - 3; i++) {
+        if (i > 0 && nums[i] == nums[i - 1]) continue;
+        for (int j = i + 1; j < numsSize - 2; j++) {
+            if (j > i + 1 && nums[j] == nums[j - 1]) continue;
+            int left = j + 1;
+            int right = numsSize - 1;
+            long currentTarget = (long)target - (long)nums[i] - (long)nums[j];
+            while (left < right) {
+                long sum = (long)nums[left] + (long)nums[right];
+                if (sum == currentTarget) {
+                    addQuadruplet(&result, nums[i], nums[j], nums[left], nums[right]);
+                    while (left < right && nums[left] == nums[left + 1]) left++;
+                    while (left < right && nums[right] == nums[right - 1]) right--;
+                    left++;
+                    right--;
+                } else if (sum < currentTarget) {
+                    left++;
+                } else {
+                    right--;
                 }
-                res[count++] = q;
             }
         }
     }
-    qsort(res, count, sizeof(int*), cmpQuad);
-    int uniqueCount = 0;
-    for (int i = 0; i < count; i++) {
-        if (i == 0 || cmpQuad(&res[i], &res[i-1]) != 0) {
-            res[uniqueCount++] = res[i];
+    *returnSize = result.size;
+    if (result.size > 0) {
+        *returnColumnSizes = malloc(result.size * sizeof(int));
+        for (int i = 0; i < result.size; i++) {
+            (*returnColumnSizes)[i] = 4;
         }
     }
-    res = realloc(res, uniqueCount * sizeof(int*));
-    *returnSize = uniqueCount;
-    *returnColumnSizes = malloc(uniqueCount * sizeof(int));
-    for (int i = 0; i < uniqueCount; i++) {
-        (*returnColumnSizes)[i] = 4;
-    }
-    return res;
+    return result.quadruplets;
 }
